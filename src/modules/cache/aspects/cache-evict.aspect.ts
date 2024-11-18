@@ -1,62 +1,40 @@
-import { Aspect } from './aspect.decorator'
-import { AspectInterface } from './aspect.interface'
-import { CACHE_EVICT_METADATA_KEY } from '../decorators/cache-evict.decorator'
-import { Reflector } from '@nestjs/core'
-import { CACHE_MANAGER, Inject } from '@nestjs/common'
+import {
+  CACHE_EVICT_METADATA_KEY,
+  CacheEvictOptions,
+} from '../decorators/cache-evict.decorator'
 import { Cache } from 'cache-manager'
+import { CACHE_MANAGER } from '@nestjs/cache-manager'
+import { Aspect, LazyDecorator, WrapParams } from '@toss/nestjs-aop'
+import { Inject } from '@nestjs/common'
 
-@Aspect()
-export class CacheEvictAspect implements AspectInterface {
-  constructor(
-    private readonly reflector: Reflector,
-    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
-  ) {}
+@Aspect(CACHE_EVICT_METADATA_KEY)
+export class CacheEvictAspect implements LazyDecorator<any, CacheEvictOptions> {
+  constructor(@Inject(CACHE_MANAGER) private readonly cacheManager: Cache) {}
 
-  apply(reflector: Reflector, instance: object, methodName: string) {
-    const method = instance[methodName]
-    const options = reflector.get(CACHE_EVICT_METADATA_KEY, method)
-    if (!options) {
-      return
-    }
+  wrap({ method, metadata: options }: WrapParams<any, CacheEvictOptions>) {
+    return async (...args: any[]) => {
+      const { key, condition, beforeInvocation } = options
 
-    const {
-      cacheName = 'default',
-      key,
-      allEntries = false,
-      condition,
-      beforeInvocation = false,
-    } = options
+      if (condition && !condition(args)) {
+        return method(...args)
+      }
 
-    const originalMethod = method.bind(instance)
+      const cacheName = options.cacheName
 
-    const evictCache = async (...args: any[]) => {
-      if (allEntries) {
-        await this.cacheManager.reset() // Be cautious with this in production
-      } else {
-        const cacheKey = key
-          ? key(args)
-          : `${instance.constructor.name}:${methodName}:${JSON.stringify(args)}`
+      const cacheKey = key
+        ? `${cacheName}:${key(args)}`
+        : `${cacheName}:${JSON.stringify(args)}`
+
+      const evict = async () => {
         await this.cacheManager.del(cacheKey)
       }
-    }
 
-    if (beforeInvocation) {
-      instance[methodName] = async (...args: any[]) => {
-        if (condition && !condition(args)) {
-          return originalMethod(...args)
-        }
-
-        await evictCache(...args)
-        return originalMethod(...args)
-      }
-    } else {
-      instance[methodName] = async (...args: any[]) => {
-        if (condition && !condition(args)) {
-          return originalMethod(...args)
-        }
-
-        const result = await originalMethod(...args)
-        await evictCache(...args)
+      if (beforeInvocation) {
+        await evict()
+        return method(...args)
+      } else {
+        const result = await method(...args)
+        await evict()
         return result
       }
     }

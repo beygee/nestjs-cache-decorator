@@ -1,4 +1,4 @@
-import { SetMetadata } from '@nestjs/common'
+import { createDecorator } from '@toss/nestjs-aop'
 
 export const CACHE_PUT_METADATA_KEY = Symbol('CACHE_PUT_METADATA_KEY')
 
@@ -11,5 +11,5 @@ export interface CachePutOptions {
 }
 
 export function CachePut(options: CachePutOptions = {}): MethodDecorator {
-  return SetMetadata(CACHE_PUT_METADATA_KEY, options)
+  return createDecorator(CACHE_PUT_METADATA_KEY, options)
 }

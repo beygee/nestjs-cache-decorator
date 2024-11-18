@@ -1,44 +1,37 @@
-import { Aspect } from './aspect.decorator'
-import { AspectInterface } from './aspect.interface'
-import { CACHE_PUT_METADATA_KEY } from '../decorators/cache-put.decorator'
-import { Reflector } from '@nestjs/core'
-import { CACHE_MANAGER, Inject } from '@nestjs/common'
+import {
+  CACHE_PUT_METADATA_KEY,
+  CachePutOptions,
+} from '../decorators/cache-put.decorator'
 import { Cache } from 'cache-manager'
+import { CACHE_MANAGER } from '@nestjs/cache-manager'
+import { Aspect, LazyDecorator, WrapParams } from '@toss/nestjs-aop'
+import { Inject } from '@nestjs/common'
 
-@Aspect()
-export class CachePutAspect implements AspectInterface {
-  constructor(
-    private readonly reflector: Reflector,
-    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
-  ) {}
+@Aspect(CACHE_PUT_METADATA_KEY)
+export class CachePutAspect implements LazyDecorator<any, CachePutOptions> {
+  constructor(@Inject(CACHE_MANAGER) private readonly cacheManager: Cache) {}
 
-  apply(reflector: Reflector, instance: object, methodName: string) {
-    const method = instance[methodName]
-    const options = reflector.get(CACHE_PUT_METADATA_KEY, method)
-    if (!options) {
-      return
-    }
+  wrap({ method, metadata: options }: WrapParams<any, CachePutOptions>) {
+    return async (...args: any[]) => {
+      const { key, condition, unless, ttl } = options
 
-    const { cacheName = 'default', key, ttl, condition, unless } = options
-
-    const originalMethod = method.bind(instance)
-
-    instance[methodName] = async (...args: any[]) => {
       if (condition && !condition(args)) {
-        return originalMethod(...args)
+        return method(...args)
       }
 
-      const result = await originalMethod(...args)
+      const cacheName = options.cacheName
+
+      const cacheKey = key
+        ? `${cacheName}:${key(args)}`
+        : `${cacheName}:${JSON.stringify(args)}`
+
+      const result = await method(...args)
 
       if (unless && unless(result)) {
         return result
       }
 
-      const cacheKey = key
-        ? key(args)
-        : `${instance.constructor.name}:${methodName}:${JSON.stringify(args)}`
-
-      await this.cacheManager.set(cacheKey, result, { ttl })
+      await this.cacheManager.set(cacheKey, result, ttl)
 
       return result
     }

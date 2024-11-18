@@ -1,49 +1,42 @@
-import { Aspect } from './aspect.decorator'
-import { AspectInterface } from './aspect.interface'
-import { CACHEABLE_METADATA_KEY } from '../decorators/cacheable.decorator'
-import { Reflector } from '@nestjs/core'
-import { CACHE_MANAGER, Inject } from '@nestjs/common'
+import {
+  CACHEABLE_METADATA_KEY,
+  CacheableOptions,
+} from '../decorators/cacheable.decorator'
 import { Cache } from 'cache-manager'
+import { CACHE_MANAGER } from '@nestjs/cache-manager'
+import { Aspect, LazyDecorator, WrapParams } from '@toss/nestjs-aop'
+import { Inject } from '@nestjs/common'
 
-@Aspect()
-export class CacheableAspect implements AspectInterface {
-  constructor(
-    private readonly reflector: Reflector,
-    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
-  ) {}
+@Aspect(CACHEABLE_METADATA_KEY)
+export class CacheableAspect implements LazyDecorator<any, CacheableOptions> {
+  constructor(@Inject(CACHE_MANAGER) private readonly cacheManager: Cache) {}
 
-  apply(reflector: Reflector, instance: object, methodName: string) {
-    const method = instance[methodName]
-    const options = reflector.get(CACHEABLE_METADATA_KEY, method)
-    if (!options) {
-      return
-    }
+  wrap({ method, metadata: options }: WrapParams<any, CacheableOptions>) {
+    return async (...args: any[]) => {
+      const { key, condition, unless, ttl } = options
 
-    const { cacheName = 'default', key, ttl, condition, unless } = options
-
-    const originalMethod = method.bind(instance)
-
-    instance[methodName] = async (...args: any[]) => {
       if (condition && !condition(args)) {
-        return originalMethod(...args)
+        return method(...args)
       }
 
+      const cacheName = options.cacheName
+
       const cacheKey = key
-        ? key(args)
-        : `${instance.constructor.name}:${methodName}:${JSON.stringify(args)}`
+        ? `${cacheName}:${key(args)}`
+        : `${cacheName}:${JSON.stringify(args)}`
 
       const cachedValue = await this.cacheManager.get(cacheKey)
       if (cachedValue !== undefined && cachedValue !== null) {
         return cachedValue
       }
 
-      const result = await originalMethod(...args)
+      const result = await method(...args)
 
       if (unless && unless(result)) {
         return result
       }
 
-      await this.cacheManager.set(cacheKey, result, { ttl })
+      await this.cacheManager.set(cacheKey, result, ttl)
 
       return result
     }
