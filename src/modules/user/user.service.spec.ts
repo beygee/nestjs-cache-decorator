@@ -2,10 +2,32 @@ import { Test, TestingModule } from '@nestjs/testing'
 
 import { UserService } from './user.service'
 import { RedisTestContainer } from '../../redis-test-container'
-import { AppModule } from '../../app.module'
 import { INestApplication } from '@nestjs/common'
 import { Redis } from 'ioredis'
 import { RedisService } from '@liaoliaots/nestjs-redis'
+import { CacheableModule } from '../cache/cacheable.module'
+import { AopModule } from '@toss/nestjs-aop'
+import { UserModule } from './user.module'
+import { RedisConfigService } from '../cache/redis-config.service'
+
+class MockRedisConfigService {
+  private host: string
+  private port: number
+
+  setConfig(host: string, port: number) {
+    this.host = host
+    this.port = port
+  }
+
+  createRedisOptions() {
+    return {
+      config: {
+        host: this.host,
+        port: this.port,
+      },
+    }
+  }
+}
 
 describe('userService', () => {
   let app: INestApplication
@@ -15,39 +37,39 @@ describe('userService', () => {
   let redisContainer: RedisTestContainer
   let redisService: RedisService
   let redis: Redis
+  let mockRedisConfigService: MockRedisConfigService
 
   beforeAll(async () => {
     // Start Redis container
     redisContainer = new RedisTestContainer()
     await redisContainer.start()
 
-    const redisHost = redisContainer.getHost()
-    const redisPort = redisContainer.getPort()
-
-    redisService = {
-      getOrThrow: () => new Redis({ host: redisHost, port: redisPort }),
-    } as any
+    // Mock 설정
+    mockRedisConfigService = new MockRedisConfigService()
+    mockRedisConfigService.setConfig(
+      redisContainer.getHost(),
+      redisContainer.getPort(),
+    )
 
     // Create NestJS testing module
     moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-      providers: [
-        {
-          provide: RedisService,
-          useValue: redisService,
-        },
-      ],
-    }).compile()
+      imports: [AopModule, CacheableModule, UserModule],
+      providers: [UserService],
+    })
+      .overrideProvider(RedisConfigService)
+      .useValue(mockRedisConfigService)
+      .compile()
 
     userService = moduleRef.get<UserService>(UserService)
+    redisService = moduleRef.get<RedisService>(RedisService)
     redis = redisService.getOrThrow()
+    console.log(redis.options)
 
     app = moduleRef.createNestApplication()
     await app.init()
   })
 
   afterAll(async () => {
-    await redis.quit()
     await app.close()
     await redisContainer.stop()
   })
