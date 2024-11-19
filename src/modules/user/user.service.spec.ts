@@ -5,11 +5,10 @@ import { RedisTestContainer } from '../../redis-test-container'
 import { INestApplication } from '@nestjs/common'
 import { Redis } from 'ioredis'
 import { RedisService } from '@liaoliaots/nestjs-redis'
-import { CacheableModule } from '../cache/cacheable.module'
-import { AopModule } from '@toss/nestjs-aop'
 import { UserModule } from './user.module'
 import { RedisConfigService } from '../cache/redis-config.service'
 import { MockRedisConfigService } from '../test/mock/mock.redis.config.service'
+import { AspectModule } from '../aspect/aspect.module'
 
 describe('userService', () => {
   let app: INestApplication
@@ -35,7 +34,7 @@ describe('userService', () => {
 
     // Create NestJS testing module
     moduleRef = await Test.createTestingModule({
-      imports: [AopModule, CacheableModule, UserModule],
+      imports: [AspectModule, UserModule],
       providers: [UserService],
     })
       .overrideProvider(RedisConfigService)

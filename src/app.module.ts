@@ -1,12 +1,11 @@
 import { Module } from '@nestjs/common'
 import { AppController } from './app.controller'
 import { AppService } from './app.service'
-import { CacheableModule } from './modules/cache/cacheable.module'
-import { AopModule } from '@toss/nestjs-aop'
 import { UserModule } from './modules/user/user.module'
+import { AspectModule } from './modules/aspect/aspect.module'
 
 @Module({
-  imports: [AopModule, CacheableModule, UserModule],
+  imports: [AspectModule, UserModule],
   controllers: [AppController],
   providers: [AppService],
 })
