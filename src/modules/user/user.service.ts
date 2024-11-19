@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common'
-import { Cache } from '@nestjs/cache-manager'
 import { Cacheable } from '../cache/decorators/cacheable.decorator'
 import { CachePut } from '../cache/decorators/cache-put.decorator'
 import { CacheEvict } from '../cache/decorators/cache-evict.decorator'
@@ -14,7 +13,7 @@ interface User {
 export class UserService {
   private userStore: UserStore
 
-  constructor(private cacheManager: Cache) {
+  constructor() {
     this.userStore = UserStore.getInstance()
   }
 

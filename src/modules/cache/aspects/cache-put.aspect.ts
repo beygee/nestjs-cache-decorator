@@ -2,14 +2,17 @@ import {
   CACHE_PUT_METADATA_KEY,
   CachePutOptions,
 } from '../decorators/cache-put.decorator'
-import { Cache } from 'cache-manager'
-import { CACHE_MANAGER } from '@nestjs/cache-manager'
 import { Aspect, LazyDecorator, WrapParams } from '@toss/nestjs-aop'
-import { Inject } from '@nestjs/common'
+import { RedisService } from '@liaoliaots/nestjs-redis'
+import { Redis } from 'ioredis'
 
 @Aspect(CACHE_PUT_METADATA_KEY)
 export class CachePutAspect implements LazyDecorator<any, CachePutOptions> {
-  constructor(@Inject(CACHE_MANAGER) private readonly cacheManager: Cache) {}
+  private readonly redis: Redis | null
+
+  constructor(private readonly redisService: RedisService) {
+    this.redis = this.redisService.getOrThrow()
+  }
 
   wrap({ method, metadata: options }: WrapParams<any, CachePutOptions>) {
     return async (...args: any[]) => {
@@ -27,13 +30,27 @@ export class CachePutAspect implements LazyDecorator<any, CachePutOptions> {
 
       const result = await method(...args)
 
-      if (unless && unless(result)) {
-        return result
+      if (!(unless && unless(result))) {
+        await this.storeInCache(cacheKey, result, ttl)
       }
 
-      await this.cacheManager.set(cacheKey, result, ttl)
-
       return result
+    }
+  }
+
+  private async storeInCache(cacheKey: string, value: any, ttl?: number) {
+    if (this.redis.status !== 'ready') {
+      return
+    }
+
+    try {
+      if (!ttl) {
+        await this.redis.set(cacheKey, JSON.stringify(value))
+      } else {
+        await this.redis.set(cacheKey, JSON.stringify(value), 'EX', ttl)
+      }
+    } catch (err) {
+      console.warn(`Failed to set cache: ${err.message}`)
     }
   }
 }

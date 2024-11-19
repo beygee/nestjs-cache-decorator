@@ -7,6 +7,10 @@ export class AppController {
 
   @Get()
   getHello() {
-    return this.appService.getHello()
+    return this.appService.getCachedHello()
+  }
+  @Get('/test')
+  getHelloTest() {
+    return 'test'
   }
 }

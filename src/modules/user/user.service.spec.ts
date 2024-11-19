@@ -1,47 +1,59 @@
 import { Test, TestingModule } from '@nestjs/testing'
 
 import { UserService } from './user.service'
-import { Cache } from '@nestjs/cache-manager'
 import { RedisTestContainer } from '../../redis-test-container'
 import { AppModule } from '../../app.module'
 import { INestApplication } from '@nestjs/common'
+import { Redis } from 'ioredis'
+import { RedisService } from '@liaoliaots/nestjs-redis'
 
 describe('userService', () => {
   let app: INestApplication
   let moduleRef: TestingModule
   let userService: UserService
-  let cacheManager: Cache
+
   let redisContainer: RedisTestContainer
+  let redisService: RedisService
+  let redis: Redis
 
   beforeAll(async () => {
     // Start Redis container
     redisContainer = new RedisTestContainer()
     await redisContainer.start()
 
-    // Set Redis connection details in environment variables
-    process.env.REDIS_HOST = redisContainer.getHost()
-    process.env.REDIS_PORT = redisContainer.getPort().toString()
+    const redisHost = redisContainer.getHost()
+    const redisPort = redisContainer.getPort()
+
+    redisService = {
+      getOrThrow: () => new Redis({ host: redisHost, port: redisPort }),
+    } as any
 
     // Create NestJS testing module
     moduleRef = await Test.createTestingModule({
       imports: [AppModule],
+      providers: [
+        {
+          provide: RedisService,
+          useValue: redisService,
+        },
+      ],
     }).compile()
 
     userService = moduleRef.get<UserService>(UserService)
-    cacheManager = moduleRef.get<Cache>(Cache)
+    redis = redisService.getOrThrow()
 
     app = moduleRef.createNestApplication()
     await app.init()
   })
 
   afterAll(async () => {
-    await cacheManager.reset()
+    await redis.quit()
     await app.close()
     await redisContainer.stop()
   })
 
   afterEach(async () => {
-    await cacheManager.reset()
+    await redis.flushall()
   })
 
   it('should cache the result of getUserById', async () => {

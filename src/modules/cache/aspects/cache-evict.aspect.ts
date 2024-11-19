@@ -2,14 +2,17 @@ import {
   CACHE_EVICT_METADATA_KEY,
   CacheEvictOptions,
 } from '../decorators/cache-evict.decorator'
-import { Cache } from 'cache-manager'
-import { CACHE_MANAGER } from '@nestjs/cache-manager'
 import { Aspect, LazyDecorator, WrapParams } from '@toss/nestjs-aop'
-import { Inject } from '@nestjs/common'
+import { RedisService } from '@liaoliaots/nestjs-redis'
+import { Redis } from 'ioredis'
 
 @Aspect(CACHE_EVICT_METADATA_KEY)
 export class CacheEvictAspect implements LazyDecorator<any, CacheEvictOptions> {
-  constructor(@Inject(CACHE_MANAGER) private readonly cacheManager: Cache) {}
+  private readonly redis: Redis | null
+
+  constructor(private readonly redisService: RedisService) {
+    this.redis = this.redisService.getOrThrow()
+  }
 
   wrap({ method, metadata: options }: WrapParams<any, CacheEvictOptions>) {
     return async (...args: any[]) => {
@@ -26,7 +29,7 @@ export class CacheEvictAspect implements LazyDecorator<any, CacheEvictOptions> {
         : `${cacheName}:${JSON.stringify(args)}`
 
       const evict = async () => {
-        await this.cacheManager.del(cacheKey)
+        await this.deleteFromCache(cacheKey)
       }
 
       if (beforeInvocation) {
@@ -37,6 +40,18 @@ export class CacheEvictAspect implements LazyDecorator<any, CacheEvictOptions> {
         await evict()
         return result
       }
+    }
+  }
+
+  private async deleteFromCache(cacheKey: string) {
+    if (this.redis.status !== 'ready') {
+      return
+    }
+
+    try {
+      await this.redis.del(cacheKey)
+    } catch (err) {
+      console.warn(`Failed to delete cache: ${err.message}`)
     }
   }
 }
