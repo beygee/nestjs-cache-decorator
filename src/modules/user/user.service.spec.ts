@@ -9,25 +9,7 @@ import { CacheableModule } from '../cache/cacheable.module'
 import { AopModule } from '@toss/nestjs-aop'
 import { UserModule } from './user.module'
 import { RedisConfigService } from '../cache/redis-config.service'
-
-class MockRedisConfigService {
-  private host: string
-  private port: number
-
-  setConfig(host: string, port: number) {
-    this.host = host
-    this.port = port
-  }
-
-  createRedisOptions() {
-    return {
-      config: {
-        host: this.host,
-        port: this.port,
-      },
-    }
-  }
-}
+import { MockRedisConfigService } from '../test/mock/mock.redis.config.service'
 
 describe('userService', () => {
   let app: INestApplication
@@ -63,7 +45,6 @@ describe('userService', () => {
     userService = moduleRef.get<UserService>(UserService)
     redisService = moduleRef.get<RedisService>(RedisService)
     redis = redisService.getOrThrow()
-    console.log(redis.options)
 
     app = moduleRef.createNestApplication()
     await app.init()
